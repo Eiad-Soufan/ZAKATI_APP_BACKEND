@@ -8,6 +8,7 @@ from .models import Asset
 from rest_framework.views import APIView
 from .utils import *
 from .services import *
+from drf_spectacular.utils import extend_schema
 
 # --------------------------
 # تسجيل مستخدم جديد
@@ -374,4 +375,5 @@ class UpdateMetalRatesView(APIView):
             return success_response(data=result, message=["Metal assets updated from metalpriceapi."])
         else:
             return error_response(errors=result.get("message") or ["Update failed"])
+
 
