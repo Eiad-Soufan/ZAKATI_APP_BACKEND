@@ -151,7 +151,7 @@ from rest_framework import permissions, generics
 from .utils import success_response
 from .services import compute_user_snapshot, grouped_transfers
 from .serializers import TransferSerializer
-
+@extend_schema(exclude=True)
 class SnapshotView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -327,6 +327,7 @@ ZAKAT_REFERENCE_JSON = {
     }
 }
 
+@extend_schema(exclude=True)
 class ZakatReferenceView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
 
@@ -343,7 +344,7 @@ class ZakatReferenceView(generics.GenericAPIView):
 
 from rest_framework.permissions import IsAdminUser
 
-# Temporary Available APIs, Schedule and delete from here and from services
+@extend_schema(exclude=True)
 class UpdateCurrencyRatesView(APIView):
     permission_classes = [permissions.AllowAny]  #IsAdminUser
 
@@ -359,6 +360,7 @@ class UpdateCurrencyRatesView(APIView):
             return error_response(errors=result.get("message") or ["Update failed"])
 
 
+@extend_schema(exclude=True)
 class UpdateMetalRatesView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -372,3 +374,4 @@ class UpdateMetalRatesView(APIView):
             return success_response(data=result, message=["Metal assets updated from metalpriceapi."])
         else:
             return error_response(errors=result.get("message") or ["Update failed"])
+
