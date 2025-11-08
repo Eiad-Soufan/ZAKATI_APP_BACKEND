@@ -1,5 +1,5 @@
 # app/services.py
-from datetime import datetime
+
 from decimal import Decimal
 from typing import Dict, Any, List, Optional, Tuple
 
@@ -12,6 +12,12 @@ from .conf import (
     NISAB_GOLD_GRAMS, NISAB_SILVER_GRAMS,
     NISAB_BENCHMARK_FOR_MONEY, ZAKAT_REMINDER_OFFSETS
 )
+# services.py (أعلى الملف أو قرب دالة التقرير)
+from datetime import datetime, time
+from decimal import Decimal, ROUND_HALF_UP
+
+
+TRANSFER_DATE_FIELD = "created_at"  # ← عدّلها إن كان الحقل اسمه 'occurred_at' مثلاً
 
 # -------- أدوات رقمية --------
 DEC6 = lambda x: (x if isinstance(x, Decimal) else Decimal(str(x))).quantize(Decimal("0.000001"))
@@ -520,7 +526,7 @@ def _q(val: Decimal, places=6) -> Decimal:
     q = Decimal("1").scaleb(-places)  # 6 -> 0.000001
     return (val or Decimal("0")).quantize(q, rounding=ROUND_HALF_UP)
 
-def compute_user_report(user, target_user_id: int) -> dict:
+def compute_user_report(user, target_user_id: int, start_dt=None, end_dt=None) -> dict:
     """
     يحسب تقرير التحويلات (Transfers) لمستخدم معيّن.
     - الأصول المُضافة: نوع ADD
@@ -561,7 +567,16 @@ def compute_user_report(user, target_user_id: int) -> dict:
 
     # جميع تحويلات المستخدم
     qs = Transfer.objects.select_related("asset").filter(user_id=target_user_id)
-
+    if start_dt and end_dt:
+        if timezone.is_naive(start_dt):
+            start_dt = timezone.make_aware(start_dt, timezone.get_current_timezone())
+        if timezone.is_naive(end_dt):
+            end_dt = timezone.make_aware(end_dt, timezone.get_current_timezone())
+        date_filters = {
+            f"{TRANSFER_DATE_FIELD}__gte": start_dt,
+            f"{TRANSFER_DATE_FIELD}__lte": end_dt,
+        }
+        qs = qs.filter(**date_filters)
     # ثوابت الأنواع (كما هي في الجدول)
     TYPE_ADD = "ADD"
     TYPE_WITHDRAW = "WITHDRAW"
@@ -643,7 +658,13 @@ def compute_user_report(user, target_user_id: int) -> dict:
         "status": "ok",
         "display_currency": display_code,
         "fx_line": fx_line,
+        "filter": {
+            "enabled": bool(start_dt and end_dt),
+            "start": start_dt.isoformat() if start_dt else None,
+            "end":   end_dt.isoformat() if end_dt else None,
+        },
         "added": added,
         "withdrawn": withdrawn,
         "zakat_out": zakat_out,
     }
+
