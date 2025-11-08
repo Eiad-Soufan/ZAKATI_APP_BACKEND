@@ -281,8 +281,30 @@ class TransferCreateSerializer(serializers.Serializer):
 
 
 
+# serializers.py
+from rest_framework import serializers
+
 class ReportsInputSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(min_value=1)
+
+    # فلاتر الزمن
+    # none = كل المناقلات (السلوك السابق)
+    filter = serializers.ChoiceField(
+        required=False,
+        choices=["none", "last_1m", "last_3m", "last_6m", "custom"],
+        default="none",
+    )
+    start_date = serializers.DateField(required=False)  # مخصص
+    end_date   = serializers.DateField(required=False)  # مخصص
+
+    def validate(self, attrs):
+        if attrs.get("filter") == "custom":
+            if not attrs.get("start_date") or not attrs.get("end_date"):
+                raise serializers.ValidationError("start_date and end_date are required for custom filter.")
+            if attrs["start_date"] > attrs["end_date"]:
+                raise serializers.ValidationError("start_date must be <= end_date.")
+        return attrs
+
 
 # serializers.py
 from rest_framework import serializers
@@ -322,6 +344,7 @@ class TransferUpdateSerializer(serializers.Serializer):
         if not Asset.objects.filter(id=value, is_active=True).exists():
             raise serializers.ValidationError("Asset not found or inactive")
         return value
+
 
 
 
