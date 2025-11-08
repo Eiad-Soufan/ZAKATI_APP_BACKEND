@@ -403,42 +403,100 @@ class ReportsView(APIView):
 
 
 
-# serializers.py
-from rest_framework import serializers
-from decimal import Decimal
-from django.contrib.auth import get_user_model
-from .models import Transfer, Asset
+# views.py
+from django.db import transaction
+from rest_framework import status
+from rest_framework.response import Response
 
-User = get_user_model()
+class TransferUpdateView(APIView):
+    permission_classes = [IsAuthenticated]
 
-TRANSFER_TYPES = {"ADD", "WITHDRAW", "ZAKAT_OUT"}
+    @transaction.atomic
+    def post(self, request):
+        """
+        يعدّل مناقلة قائمة.
+        body مثال:
+        {
+          "transfer_id": 123,
+          "asset_id": 4,               // اختياري
+          "type": "ADD",               // اختياري: ADD|WITHDRAW|ZAKAT_OUT
+          "quantity": "12.5",          // اختياري (>=0)
+          "note": "تعديل تجريبي",      // اختياري
+          "bill_base64": "data:image/png;base64,....", // اختياري (يستبدل الموجودة)
+          "bill_clear": false          // اختياري: true لحذف الصورة
+        }
+        """
+        ser = TransferUpdateSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        data = ser.validated_data
 
-class TransferUpdateSerializer(serializers.Serializer):
-    transfer_id = serializers.IntegerField(min_value=1)
+        # جلب المناقلة
+        try:
+            transfer = Transfer.objects.select_for_update().get(id=data["transfer_id"])
+        except Transfer.DoesNotExist:
+            return error_response(errors=["Transfer not found"], status_code=404)
 
-    # الحقول القابلة للتعديل (كلها اختيارية)
-    asset_id   = serializers.IntegerField(min_value=1, required=False)
-    type       = serializers.CharField(required=False)
-    quantity   = serializers.DecimalField(required=False, max_digits=18, decimal_places=6)
-    note       = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+        # صلاحيات: المالك أو مشرف
+        user = request.user
+        if not (user.is_superuser or transfer.user_id == user.id):
+            return error_response(errors=["Not allowed for this transfer"], status_code=403)
 
-    # صورة الفاتورة Base64 أو أمر حذفها
-    bill_base64 = serializers.CharField(required=False, allow_blank=False)
-    bill_clear  = serializers.BooleanField(required=False, default=False)
+        # تعديل الحقول الآمنة فقط
+        updated_fields = []
 
-    def validate_type(self, value):
-        v = (value or "").upper().strip()
-        if v not in TRANSFER_TYPES:
-            raise serializers.ValidationError("Invalid transfer type. Allowed: ADD, WITHDRAW, ZAKAT_OUT")
-        return v
+        if "asset_id" in data:
+            asset = Asset.objects.get(id=data["asset_id"])
+            if transfer.asset_id != asset.id:
+                transfer.asset = asset
+                updated_fields.append("asset")
 
-    def validate_quantity(self, value: Decimal):
-        if value is not None and value < 0:
-            raise serializers.ValidationError("Quantity must be >= 0")
-        return value
+        if "type" in data:
+            t = data["type"].upper().strip()
+            if transfer.type != t:
+                transfer.type = t
+                updated_fields.append("type")
 
-    def validate_asset_id(self, value):
-        if not Asset.objects.filter(id=value, is_active=True).exists():
-            raise serializers.ValidationError("Asset not found or inactive")
-        return value
+        if "quantity" in data:
+            q = data["quantity"]
+            # الأموال quantity = مقدار (amount) وهو نفس الحقل هنا
+            if transfer.quantity != q:
+                transfer.quantity = q
+                updated_fields.append("quantity")
+
+        if "note" in data:
+            n = data.get("note")
+            if transfer.note != n:
+                transfer.note = n
+                updated_fields.append("note")
+
+        # صورة الفاتورة
+        if data.get("bill_clear", False):
+            if getattr(transfer, "bill", None):
+                transfer.bill.delete(save=False)
+            transfer.bill = None
+            updated_fields.append("bill")
+        elif "bill_base64" in data:
+            try:
+                content = decode_base64_image(data["bill_base64"])
+            except ValueError:
+                return error_response(errors=["Invalid base64 image"], status_code=400)
+            if getattr(transfer, "bill", None):
+                transfer.bill.delete(save=False)
+            transfer.bill = content
+            updated_fields.append("bill")
+
+        # إن لم يغيّر شيء
+        if not updated_fields:
+            return success_response(message=["No changes"], data={"transfer_id": transfer.id})
+
+        transfer.save()  # بدون update_fields كي نضمن إشارات الحفظ
+
+        return success_response(
+            message=["Transfer updated successfully"],
+            data={
+                "transfer_id": transfer.id,
+                "updated_fields": updated_fields,
+            },
+        )
+
 
