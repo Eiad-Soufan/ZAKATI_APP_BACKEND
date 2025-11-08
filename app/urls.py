@@ -13,5 +13,7 @@ urlpatterns = [
     path("reference/zakat/", ZakatReferenceView.as_view(), name="zakat_reference"),
     path("rates/update/currencies/", UpdateCurrencyRatesView.as_view(), name="update_currency_rates"),
     path("rates/update/metals/", UpdateMetalRatesView.as_view(), name="update_metal_rates"),
+    path("reports/summary/", ReportsView.as_view(), name="reports_summary"),
 
 ]
+
