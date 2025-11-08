@@ -9,6 +9,8 @@ from rest_framework.views import APIView
 from .utils import *
 from .services import *
 from drf_spectacular.utils import extend_schema
+from rest_framework.permissions import IsAuthenticated
+
 
 # --------------------------
 # تسجيل مستخدم جديد
@@ -376,4 +378,26 @@ class UpdateMetalRatesView(APIView):
         else:
             return error_response(errors=result.get("message") or ["Update failed"])
 
+
+
+
+class ReportsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        تقارير تحويلات المستخدم:
+        body: {"user_id": 123}
+        """
+        ser = ReportsInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        user_id = ser.validated_data["user_id"]
+
+        result = compute_user_report(request.user, user_id)
+        if result.get("status") == "forbidden":
+            return error_response(errors=["Not allowed."], status_code=403)
+        if result.get("status") != "ok":
+            return error_response(errors=result.get("message") or ["Failed to compute report."])
+
+        return success_response(data=result, message=["Report computed."])
 
