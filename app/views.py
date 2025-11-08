@@ -10,6 +10,8 @@ from .utils import *
 from .services import *
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
+from datetime import datetime, timedelta, time
+from django.utils import timezone
 
 
 # --------------------------
@@ -381,19 +383,52 @@ class UpdateMetalRatesView(APIView):
 
 
 
+
 class ReportsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        """
-        تقارير تحويلات المستخدم:
-        body: {"user_id": 123}
-        """
         ser = ReportsInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        user_id = ser.validated_data["user_id"]
+        user_id   = ser.validated_data["user_id"]
+        filt_type = ser.validated_data.get("filter", "none")
+        start_date = ser.validated_data.get("start_date")
+        end_date   = ser.validated_data.get("end_date")
 
-        result = compute_user_report(request.user, user_id)
+        # احسب حدود التاريخ (شاملة) بحسب الفلتر
+        start_dt = end_dt = None
+        tz = timezone.get_current_timezone()
+        now = timezone.now()
+
+        def day_start(d):  # 00:00:00
+            return timezone.make_aware(datetime.combine(d, time.min), tz)
+
+        def day_end(d):    # 23:59:59.999999
+            return timezone.make_aware(datetime.combine(d, time.max), tz)
+
+        if filt_type == "last_1m":
+            start_dt = now - timedelta(days=30)
+            start_dt = datetime.combine(start_dt.date(), time.min).replace(tzinfo=tz)
+            end_dt   = datetime.combine(now.date(), time.max).replace(tzinfo=tz)
+
+        elif filt_type == "last_3m":
+            start_dt = now - timedelta(days=90)
+            start_dt = datetime.combine(start_dt.date(), time.min).replace(tzinfo=tz)
+            end_dt   = datetime.combine(now.date(), time.max).replace(tzinfo=tz)
+
+        elif filt_type == "last_6m":
+            start_dt = now - timedelta(days=180)
+            start_dt = datetime.combine(start_dt.date(), time.min).replace(tzinfo=tz)
+            end_dt   = datetime.combine(now.date(), time.max).replace(tzinfo=tz)
+
+        elif filt_type == "custom":
+            # start_date / end_date تأتي من الـ serializer بشكل Date
+            start_dt = day_start(start_date)
+            end_dt   = day_end(end_date)
+
+        # none => بدون فلترة زمنية
+
+        result = compute_user_report(request.user, user_id, start_dt=start_dt, end_dt=end_dt)
         if result.get("status") == "forbidden":
             return error_response(errors=["Not allowed."], status_code=403)
         if result.get("status") != "ok":
@@ -403,10 +438,7 @@ class ReportsView(APIView):
 
 
 
-# views.py
-from django.db import transaction
-from rest_framework import status
-from rest_framework.response import Response
+
 
 class TransferUpdateView(APIView):
     permission_classes = [IsAuthenticated]
@@ -498,5 +530,6 @@ class TransferUpdateView(APIView):
                 "updated_fields": updated_fields,
             },
         )
+
 
 
