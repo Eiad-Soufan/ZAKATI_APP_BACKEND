@@ -7,7 +7,6 @@ import base64
 from django.core.files.base import ContentFile
 from .models import Asset
 
-
 User = get_user_model()
 # --------------------------
 # تسجيل مستخدم جديد
@@ -279,3 +278,8 @@ class TransferCreateSerializer(serializers.Serializer):
                 transfer.bill.save(filename, content, save=True)
 
         return transfer
+
+
+
+class ReportsInputSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField(min_value=1)
