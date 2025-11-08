@@ -283,3 +283,45 @@ class TransferCreateSerializer(serializers.Serializer):
 
 class ReportsInputSerializer(serializers.Serializer):
     user_id = serializers.IntegerField(min_value=1)
+
+# serializers.py
+from rest_framework import serializers
+from decimal import Decimal
+from django.contrib.auth import get_user_model
+from .models import Transfer, Asset
+
+User = get_user_model()
+
+TRANSFER_TYPES = {"ADD", "WITHDRAW", "ZAKAT_OUT"}
+
+class TransferUpdateSerializer(serializers.Serializer):
+    transfer_id = serializers.IntegerField(min_value=1)
+
+    # الحقول القابلة للتعديل (كلها اختيارية)
+    asset_id   = serializers.IntegerField(min_value=1, required=False)
+    type       = serializers.CharField(required=False)
+    quantity   = serializers.DecimalField(required=False, max_digits=18, decimal_places=6)
+    note       = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    # صورة الفاتورة Base64 أو أمر حذفها
+    bill_base64 = serializers.CharField(required=False, allow_blank=False)
+    bill_clear  = serializers.BooleanField(required=False, default=False)
+
+    def validate_type(self, value):
+        v = (value or "").upper().strip()
+        if v not in TRANSFER_TYPES:
+            raise serializers.ValidationError("Invalid transfer type. Allowed: ADD, WITHDRAW, ZAKAT_OUT")
+        return v
+
+    def validate_quantity(self, value: Decimal):
+        if value is not None and value < 0:
+            raise serializers.ValidationError("Quantity must be >= 0")
+        return value
+
+    def validate_asset_id(self, value):
+        if not Asset.objects.filter(id=value, is_active=True).exists():
+            raise serializers.ValidationError("Asset not found or inactive")
+        return value
+
+
+
