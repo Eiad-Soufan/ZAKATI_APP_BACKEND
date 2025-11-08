@@ -507,3 +507,143 @@ def update_metals_assets_from_metalpriceapi(api_key: str) -> dict:
         "timestamp": payload.get("timestamp"),
         "base": payload.get("base"),
     }
+
+
+
+
+# services.py (أضِف في الأسفل مثلاً)
+from decimal import Decimal, ROUND_HALF_UP
+from django.db.models import Sum, F
+from django.db.models.functions import Coalesce
+
+def _q(val: Decimal, places=6) -> Decimal:
+    q = Decimal("1").scaleb(-places)  # 6 -> 0.000001
+    return (val or Decimal("0")).quantize(q, rounding=ROUND_HALF_UP)
+
+def compute_user_report(user, target_user_id: int) -> dict:
+    """
+    يحسب تقرير التحويلات (Transfers) لمستخدم معيّن.
+    - الأصول المُضافة: نوع ADD
+    - الأصول المسحوبة: نوع WITHDRAW
+    - الزكاة المدفوعة: نوع ZAKAT_OUT
+    * الذهب/الفضة: كمية بالغرام وقيمتها USD و بعملة العرض
+    * الأموال: لا تُعاد الكمية، فقط القيم USD و بعملة العرض
+    * عملة العرض: display_currency على المستخدم؛ وإن لم توجد → USD
+    """
+    from .models import Transfer, Asset, User
+
+    # صلاحية الوصول: المالك نفسه أو مشرف
+    if (not user.is_superuser) and (user.id != target_user_id):
+        return {"status": "forbidden", "message": ["Not allowed for this user_id."]}
+
+    # جلب عملة العرض
+    try:
+        target_user = User.objects.get(id=target_user_id)
+    except User.DoesNotExist:
+        return {"status": "error", "message": ["User not found."]}
+
+    display_asset = getattr(target_user, "display_currency", None)  # قد تكون FK إلى Asset
+    if not display_asset:
+        # افتراض USD
+        display_asset = Asset.objects.filter(asset_code="USD", is_active=True).first()
+
+    # عامل التحويل: كم (وحدة عرض) لكل 1 USD
+    # note: unit_price_usd = USD per 1 unit => display_per_usd = 1 / unit_price_usd
+    if display_asset and display_asset.unit_price_usd and display_asset.unit_price_usd > 0:
+        display_per_usd = Decimal("1") / display_asset.unit_price_usd
+        display_code = display_asset.asset_code
+    else:
+        display_per_usd = Decimal("1")
+        display_code = "USD"
+
+    def usd_to_display(amount_usd: Decimal) -> Decimal:
+        return _q((amount_usd or Decimal("0")) * display_per_usd)
+
+    # جميع تحويلات المستخدم
+    qs = Transfer.objects.select_related("asset").filter(user_id=target_user_id)
+
+    # ثوابت الأنواع (كما هي في الجدول)
+    TYPE_ADD = "ADD"
+    TYPE_WITHDRAW = "WITHDRAW"
+    TYPE_ZAKAT = "ZAKAT_OUT"
+
+    # سنجمع بقيم USD: (الكمية × سعر الأصل بالدولار)
+    # ملاحظة: الأموال (Money) لها unit_name="amount" ولا نعرض quantity لها.
+
+    def base_bucket():
+        return {
+            "gold":   {"quantity_gram": Decimal("0"), "value_usd": Decimal("0"), "value_display": Decimal("0")},
+            "silver": {"quantity_gram": Decimal("0"), "value_usd": Decimal("0"), "value_display": Decimal("0")},
+            "money":  {"value_usd": Decimal("0"), "value_display": Decimal("0")},  # لا كمية للأموال
+        }
+
+    added     = base_bucket()
+    withdrawn = base_bucket()
+    zakat_out = base_bucket()
+
+    # نكرّر على التحويلات ونصنّف حسب Asset.name (Gold/Silver/Money)
+    for t in qs:
+        a = t.asset
+        if not a or not a.is_active:
+            continue
+
+        cls = (a.name or "").strip().lower()  # "gold"/"silver"/"money"
+        qty = t.quantity or Decimal("0")
+        # قيمة USD: الكمية × سعر الأصل بالدولار (لكل غرام للمعادن، لكل وحدة عملة للأموال)
+        value_usd = (qty * (a.unit_price_usd or Decimal("0")))
+
+        if cls == "gold":
+            if t.type == TYPE_ADD:
+                added["gold"]["quantity_gram"] += qty
+                added["gold"]["value_usd"] += value_usd
+            elif t.type == TYPE_WITHDRAW:
+                withdrawn["gold"]["quantity_gram"] += qty
+                withdrawn["gold"]["value_usd"] += value_usd
+            elif t.type == TYPE_ZAKAT:
+                zakat_out["gold"]["quantity_gram"] += qty
+                zakat_out["gold"]["value_usd"] += value_usd
+
+        elif cls == "silver":
+            if t.type == TYPE_ADD:
+                added["silver"]["quantity_gram"] += qty
+                added["silver"]["value_usd"] += value_usd
+            elif t.type == TYPE_WITHDRAW:
+                withdrawn["silver"]["quantity_gram"] += qty
+                withdrawn["silver"]["value_usd"] += value_usd
+            elif t.type == TYPE_ZAKAT:
+                zakat_out["silver"]["quantity_gram"] += qty
+                zakat_out["silver"]["value_usd"] += value_usd
+
+        elif cls == "money":
+            if t.type == TYPE_ADD:
+                added["money"]["value_usd"] += value_usd
+            elif t.type == TYPE_WITHDRAW:
+                withdrawn["money"]["value_usd"] += value_usd
+            elif t.type == TYPE_ZAKAT:
+                zakat_out["money"]["value_usd"] += value_usd
+
+    # تحويل USD إلى عملة العرض وتجهيز التقريب
+    for bucket in (added, withdrawn, zakat_out):
+        # gold
+        bucket["gold"]["quantity_gram"] = _q(bucket["gold"]["quantity_gram"])
+        bucket["gold"]["value_usd"] = _q(bucket["gold"]["value_usd"])
+        bucket["gold"]["value_display"] = usd_to_display(bucket["gold"]["value_usd"])
+        # silver
+        bucket["silver"]["quantity_gram"] = _q(bucket["silver"]["quantity_gram"])
+        bucket["silver"]["value_usd"] = _q(bucket["silver"]["value_usd"])
+        bucket["silver"]["value_display"] = usd_to_display(bucket["silver"]["value_usd"])
+        # money (no quantity)
+        bucket["money"]["value_usd"] = _q(bucket["money"]["value_usd"])
+        bucket["money"]["value_display"] = usd_to_display(bucket["money"]["value_usd"])
+
+    # سطر سعر الصرف: "1 USD = X CODE"
+    fx_line = f"1 USD = {_q(display_per_usd)} {display_code}"
+
+    return {
+        "status": "ok",
+        "display_currency": display_code,
+        "fx_line": fx_line,
+        "added": added,
+        "withdrawn": withdrawn,
+        "zakat_out": zakat_out,
+    }
