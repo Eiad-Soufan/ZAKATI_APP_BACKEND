@@ -608,33 +608,33 @@ def compute_user_report(user, target_user_id: int, start_dt=None, end_dt=None) -
         value_usd = (qty * (a.unit_price_usd or Decimal("0")))
 
         if cls == "gold":
-            if t.type == TYPE_ADD:
+            if t.transfer_type  == TYPE_ADD:
                 added["gold"]["quantity_gram"] += qty
                 added["gold"]["value_usd"] += value_usd
-            elif t.type == TYPE_WITHDRAW:
+            elif t.transfer_type  == TYPE_WITHDRAW:
                 withdrawn["gold"]["quantity_gram"] += qty
                 withdrawn["gold"]["value_usd"] += value_usd
-            elif t.type == TYPE_ZAKAT:
+            elif t.transfer_type  == TYPE_ZAKAT:
                 zakat_out["gold"]["quantity_gram"] += qty
                 zakat_out["gold"]["value_usd"] += value_usd
 
         elif cls == "silver":
-            if t.type == TYPE_ADD:
+            if t.transfer_type  == TYPE_ADD:
                 added["silver"]["quantity_gram"] += qty
                 added["silver"]["value_usd"] += value_usd
-            elif t.type == TYPE_WITHDRAW:
+            elif t.transfer_type  == TYPE_WITHDRAW:
                 withdrawn["silver"]["quantity_gram"] += qty
                 withdrawn["silver"]["value_usd"] += value_usd
-            elif t.type == TYPE_ZAKAT:
+            elif t.transfer_type  == TYPE_ZAKAT:
                 zakat_out["silver"]["quantity_gram"] += qty
                 zakat_out["silver"]["value_usd"] += value_usd
 
         elif cls == "money":
-            if t.type == TYPE_ADD:
+            if t.transfer_type  == TYPE_ADD:
                 added["money"]["value_usd"] += value_usd
-            elif t.type == TYPE_WITHDRAW:
+            elif t.transfer_type  == TYPE_WITHDRAW:
                 withdrawn["money"]["value_usd"] += value_usd
-            elif t.type == TYPE_ZAKAT:
+            elif t.transfer_type  == TYPE_ZAKAT:
                 zakat_out["money"]["value_usd"] += value_usd
 
     # تحويل USD إلى عملة العرض وتجهيز التقريب
@@ -667,4 +667,5 @@ def compute_user_report(user, target_user_id: int, start_dt=None, end_dt=None) -
         "withdrawn": withdrawn,
         "zakat_out": zakat_out,
     }
+
 
