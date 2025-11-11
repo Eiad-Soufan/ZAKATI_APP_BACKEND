@@ -484,9 +484,9 @@ class TransferUpdateView(APIView):
 
         if "type" in data:
             t = data["type"].upper().strip()
-            if transfer.type != t:
-                transfer.type = t
-                updated_fields.append("type")
+            if transfer.transfer_type != t:
+                transfer.transfer_type = t
+                updated_fields.append("transfer_type")
 
         if "quantity" in data:
             q = data["quantity"]
@@ -530,6 +530,7 @@ class TransferUpdateView(APIView):
                 "updated_fields": updated_fields,
             },
         )
+
 
 
 
