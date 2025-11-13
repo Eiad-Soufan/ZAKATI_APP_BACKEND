@@ -12,16 +12,21 @@ from .conf import (
     NISAB_GOLD_GRAMS, NISAB_SILVER_GRAMS,
     NISAB_BENCHMARK_FOR_MONEY, ZAKAT_REMINDER_OFFSETS
 )
-# services.py (أعلى الملف أو قرب دالة التقرير)
+
 from datetime import datetime, time
 from decimal import Decimal, ROUND_HALF_UP
 
 
-TRANSFER_DATE_FIELD = "created_at"  # ← عدّلها إن كان الحقل اسمه 'occurred_at' مثلاً
+
+
+TRANSFER_DATE_FIELD = "transfer_date"  # ← عدّلها إن كان الحقل اسمه 'occurred_at' مثلاً
 
 # -------- أدوات رقمية --------
 DEC6 = lambda x: (x if isinstance(x, Decimal) else Decimal(str(x))).quantize(Decimal("0.000001"))
 def now_utc(): return timezone.now()
+
+def _local(dt):
+    return timezone.localtime(dt, timezone.get_current_timezone()) if dt else None
 
 # -------- عملة العرض --------
 def get_display_currency(user: User) -> Optional[Asset]:
@@ -257,9 +262,9 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
         "nisab_usd": str(nisab_usd),
         "haul": {
             "above_now": haul["above_now"],
-            "haul_started_at": haul["haul_started_at"],
+            "haul_started_at": _local(haul["haul_started_at"]),
             "completed_hawl": haul["completed_hawl"],
-            "next_due_date": haul["next_due_date"],
+            "next_due_date": _local(haul["next_due_date"]),
             "days_left": haul["days_left"],
         },
         "zakat": {
@@ -667,5 +672,6 @@ def compute_user_report(user, target_user_id: int, start_dt=None, end_dt=None) -
         "withdrawn": withdrawn,
         "zakat_out": zakat_out,
     }
+
 
 
