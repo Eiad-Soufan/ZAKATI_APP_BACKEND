@@ -1,10 +1,12 @@
 # app/services.py
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Dict, Any, List, Optional, Tuple
 
 from django.utils import timezone
-from django.db.models import Sum
+from django.db.models import Sum, F
+from django.db.models.functions import Coalesce
+from django.db import transaction
 
 from .models import Asset, Transfer, User
 from .conf import (
@@ -14,19 +16,21 @@ from .conf import (
 )
 
 from datetime import datetime, time
-from decimal import Decimal, ROUND_HALF_UP
+import requests
 
 
 
 
+# Update Currencies and Metals
+METAL_API_URL = "https://api.metalpriceapi.com/v1/latest"
+OUNCE_TROY_TO_GRAM = Decimal("31.1034768")
+ERAPI_URL = "https://open.er-api.com/v6/latest/USD"
+################################################
 TRANSFER_DATE_FIELD = "transfer_date"  # ← عدّلها إن كان الحقل اسمه 'occurred_at' مثلاً
 
 # -------- أدوات رقمية --------
 DEC6 = lambda x: (x if isinstance(x, Decimal) else Decimal(str(x))).quantize(Decimal("0.000001"))
 def now_utc(): return timezone.now()
-
-def _local(dt):
-    return timezone.localtime(dt, timezone.get_current_timezone()) if dt else None
 
 # -------- عملة العرض --------
 def get_display_currency(user: User) -> Optional[Asset]:
@@ -262,9 +266,9 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
         "nisab_usd": str(nisab_usd),
         "haul": {
             "above_now": haul["above_now"],
-            "haul_started_at": _local(haul["haul_started_at"]),
+            "haul_started_at": haul["haul_started_at"],
             "completed_hawl": haul["completed_hawl"],
-            "next_due_date": _local(haul["next_due_date"]),
+            "next_due_date": haul["next_due_date"],
             "days_left": haul["days_left"],
         },
         "zakat": {
@@ -344,12 +348,7 @@ def grouped_transfers(user: User, limit: Optional[int] = None) -> Dict[str, List
 ######################################################
 ######################################################
 # Update Currencies and Metals
-import requests
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from django.db import transaction
-METAL_API_URL = "https://api.metalpriceapi.com/v1/latest"
-OUNCE_TROY_TO_GRAM = Decimal("31.1034768")
-ERAPI_URL = "https://open.er-api.com/v6/latest/USD"
+
 
 def update_currency_assets_from_erapi() -> dict:
     from .models import Asset
@@ -522,10 +521,7 @@ def update_metals_assets_from_metalpriceapi(api_key: str) -> dict:
 
 
 
-# services.py (أضِف في الأسفل مثلاً)
-from decimal import Decimal, ROUND_HALF_UP
-from django.db.models import Sum, F
-from django.db.models.functions import Coalesce
+# services.py 
 
 def _q(val: Decimal, places=6) -> Decimal:
     q = Decimal("1").scaleb(-places)  # 6 -> 0.000001
@@ -672,6 +668,7 @@ def compute_user_report(user, target_user_id: int, start_dt=None, end_dt=None) -
         "withdrawn": withdrawn,
         "zakat_out": zakat_out,
     }
+
 
 
 
