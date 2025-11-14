@@ -558,4 +558,31 @@ ABOUT_JSON = {
     ]
 }
 
+CONTACT_INFO_JSON = {
+    "title": "معلومات التواصل",
+    "message": "يسعدنا تواصلك معنا في أي وقت عبر القنوات التالية:",
+    "contacts": [
+        {
+            "method": "WhatsApp",
+            "value": "+60123456789",
+            "icon": "📱"
+        },
+        {
+            "method": "Email",
+            "value": "support@zakati.com",
+            "icon": "✉️"
+        },
+        {
+            "method": "Phone",
+            "value": "+60388888888",
+            "icon": "📞"
+        },
+        {
+            "method": "Instagram",
+            "value": "https://instagram.com/zakatiapp",
+            "icon": "📷"
+        }
+    ]
+}
+
 
