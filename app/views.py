@@ -8,10 +8,15 @@ from .models import Asset
 from rest_framework.views import APIView
 from .utils import *
 from .services import *
-from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from datetime import datetime, timedelta, time
 from django.utils import timezone
+
+# views.py
+from rest_framework.permissions import AllowAny
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiTypes
+
+from .conf import *
 
 
 # --------------------------
@@ -500,6 +505,31 @@ class ZakatReferenceView(generics.GenericAPIView):
         return success_response(data=ZAKAT_REFERENCE_JSON, message=["reference generated"])
 
 
+
+
+class PrivacyPolicyView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = None  # لا يوجد body
+
+    @extend_schema(
+        tags=["Legal"],
+        summary="سياسة الخصوصية",
+        description="يعيد هيكل سياسة الخصوصية الخاص بتطبيق الزكاة على شكل JSON منظم.",
+        request=None,
+        responses={
+            200: OpenApiResponse(
+                description="Privacy policy JSON",
+                response=OpenApiTypes.OBJECT
+            )
+        },
+    )
+    def get(self, request):
+        return success_response(
+            data=PRIVACY_POLICY_JSON,
+            message=["privacy policy"]
+        )
+
+
 # https://open.er-api.com/v6/latest/USD
 
 # https://metalpriceapi.com/dashboard
@@ -690,6 +720,7 @@ class TransferUpdateView(APIView):
                 "updated_fields": updated_fields,
             },
         )
+
 
 
 
