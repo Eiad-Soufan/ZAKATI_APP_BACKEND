@@ -553,6 +553,17 @@ class AboutView(APIView):
             message=["about"]
         )
 
+
+class ContactInfoView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = None
+
+    def get(self, request):
+        return success_response(
+            data=CONTACT_INFO_JSON,
+            message=["contact_info"]
+        )
+
 # https://open.er-api.com/v6/latest/USD
 
 # https://metalpriceapi.com/dashboard
@@ -743,6 +754,7 @@ class TransferUpdateView(APIView):
                 "updated_fields": updated_fields,
             },
         )
+
 
 
 
