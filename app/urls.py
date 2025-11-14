@@ -12,11 +12,13 @@ urlpatterns = [
     path("snapshot/", SnapshotView.as_view(), name="snapshot"),
     path("reference/zakat/", ZakatReferenceView.as_view(), name="zakat_reference"),
     path("reference/privacy/", PrivacyPolicyView.as_view(), name="privacy-policy"),
+    path("reference/terms/", TermsOfUseView.as_view(), name="terms-of-use"),
     path("rates/update/currencies/", UpdateCurrencyRatesView.as_view(), name="update_currency_rates"),
     path("rates/update/metals/", UpdateMetalRatesView.as_view(), name="update_metal_rates"),
     path("reports/summary/", ReportsView.as_view(), name="reports_summary"),
     path("transfers/update/", TransferUpdateView.as_view(), name="transfer_update"),
 ]
+
 
 
 
