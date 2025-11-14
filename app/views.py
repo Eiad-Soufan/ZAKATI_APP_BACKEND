@@ -530,6 +530,17 @@ class PrivacyPolicyView(APIView):
         )
 
 
+
+class TermsOfUseView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = None  
+
+    def get(self, request):
+        return success_response(
+            data=TERMS_OF_USE_JSON,
+            message=["terms of use"]
+        )
+
 # https://open.er-api.com/v6/latest/USD
 
 # https://metalpriceapi.com/dashboard
@@ -720,6 +731,7 @@ class TransferUpdateView(APIView):
                 "updated_fields": updated_fields,
             },
         )
+
 
 
 
