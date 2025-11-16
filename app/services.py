@@ -421,16 +421,95 @@ def build_notifications_for_class(class_snapshot: Dict[str, Any]) -> List[str]:
             msgs.append("حان موعد الزكاة اليوم." if d == 0 else f"تبقّى {d} يومًا على موعد الزكاة.")
     return msgs
 
-# -------- تجميعة المستخدم --------
+
+def compute_combined_gold_money_zakat(user: User) -> Decimal:
+    """
+    تحسب الزكاة الواجبة (بالدولار) على مجموع الأثمان:
+      - Gold (gram)
+      - Silver (gram)
+      - Money (amount)
+    بنفس منطق الحول المتعدد والزكاة المتأخرة.
+    النتيجة: إجمالي الزكاة المستحقة الآن على الكل.
+    """
+
+    # جميع أصول الأثمان
+    gold_assets = list(Asset.objects.filter(name="Gold", unit_name="gram", is_active=True))
+    silver_assets = list(Asset.objects.filter(name="Silver", unit_name="gram", is_active=True))
+    money_assets = list(Asset.objects.filter(name="Money", unit_name="amount", is_active=True))
+
+    assets = gold_assets + silver_assets + money_assets
+    if not assets:
+        return Decimal("0")
+
+    # خط الزمن لقيمة المجموع (ذهب + فضة + أموال)
+    running_usd, timeline = running_balance_usd_for_class(user, assets)
+
+    # نصاب المال بناء على الإعداد NISAB_BENCHMARK_FOR_MONEY (ذهب/فضة)
+    nisab_usd = nisab_usd_for_money()
+
+    haul = haul_window_from_timeline(timeline, nisab_usd)
+    zakat_due_usd = Decimal("0")
+
+    # فقط لو المال الآن فوق النصاب ومر عليه حول قمري كامل
+    if haul["above_now"] and haul["completed_hawl"]:
+        start = haul["haul_started_at"]
+
+        if start is not None:
+            cycles = compute_overdue_zakat_cycles(timeline, start, nisab_usd)
+        else:
+            cycles = []
+
+        if cycles:
+            # أول تاريخ استحقاق
+            first_due = cycles[0]["due_at"]
+
+            # مجموع ما دفعه المستخدم كزكاة (ZAKAT_OUT) منذ أول استحقاق
+            total_paid = total_zakat_out_since(user, assets, first_due)
+
+            # وزّع المدفوع على السنوات بالترتيب (FIFO)
+            total_remaining, earliest_unpaid_due = allocate_paid_over_cycles(total_paid, cycles)
+
+            if total_remaining > 0:
+                zakat_due_usd = DEC6(total_remaining)
+
+    return zakat_due_usd
+
+
 def compute_user_snapshot(user: User) -> Dict[str, Any]:
     display = get_display_currency(user)
 
+    # اللقطات المنفصلة لكل فئة (كما هي – لا نغيّر منطقها الداخلي)
     gold = compute_class_snapshot(user, "gold")
     silver = compute_class_snapshot(user, "silver")
     money = compute_class_snapshot(user, "money")
 
-    total_usd = DEC6(Decimal(gold["total_value_usd"]) + Decimal(silver["total_value_usd"]) + Decimal(money["total_value_usd"]))
+    # إجمالي القيمة بالدولار
+    total_usd = DEC6(
+        Decimal(gold["total_value_usd"]) +
+        Decimal(silver["total_value_usd"]) +
+        Decimal(money["total_value_usd"])
+    )
 
+    # --- جديد: زكاة مجموع الأثمان (ذهب + فضة + أموال) ---
+    combined_zakat_usd = compute_combined_gold_money_zakat(user)
+    combined_zakat_usd = DEC6(combined_zakat_usd)
+    combined_zakat_display = usd_to_display(combined_zakat_usd, display)
+
+    # نضع الزكاة النهائية في "money" فقط كما تريد
+    # ونصفّر الزكاة الظاهرة في الذهب والفضة (عرض فقط، لا يمس الحول أو الحساب الداخلي)
+    zero_usd = Decimal("0")
+    zero_display = usd_to_display(zero_usd, display)
+
+    gold["zakat"]["zakat_due_usd"] = "0"
+    gold["zakat"]["zakat_due_display"] = str(zero_display)
+
+    silver["zakat"]["zakat_due_usd"] = "0"
+    silver["zakat"]["zakat_due_display"] = str(zero_display)
+
+    money["zakat"]["zakat_due_usd"] = str(combined_zakat_usd)
+    money["zakat"]["zakat_due_display"] = str(combined_zakat_display)
+
+    # الإشعارات تبقى تبع كل فئة كما هي (اعتمادًا على haul لكل واحدة)
     notifications: List[str] = []
     notifications += build_notifications_for_class(gold)
     notifications += build_notifications_for_class(silver)
@@ -453,6 +532,40 @@ def compute_user_snapshot(user: User) -> Dict[str, Any]:
         },
         "notifications": notifications,
     }
+
+
+# حساب الزكاة لكل اصل مختلف عن الاخر
+# def compute_user_snapshot(user: User) -> Dict[str, Any]:
+#     display = get_display_currency(user)
+
+#     gold = compute_class_snapshot(user, "gold")
+#     silver = compute_class_snapshot(user, "silver")
+#     money = compute_class_snapshot(user, "money")
+
+#     total_usd = DEC6(Decimal(gold["total_value_usd"]) + Decimal(silver["total_value_usd"]) + Decimal(money["total_value_usd"]))
+
+#     notifications: List[str] = []
+#     notifications += build_notifications_for_class(gold)
+#     notifications += build_notifications_for_class(silver)
+#     notifications += build_notifications_for_class(money)
+
+#     return {
+#         "display_currency": {
+#             "asset_id": (display.id if display else None),
+#             "asset_code": (display.asset_code if display else "USD"),
+#             "unit_price_usd": str(display.unit_price_usd) if display else "1.000000",
+#         },
+#         "totals": {
+#             "total_value_usd": str(total_usd),
+#             "total_value_display": str(usd_to_display(total_usd, display)),
+#         },
+#         "classes": {
+#             "gold": gold,
+#             "silver": silver,
+#             "money": money,
+#         },
+#         "notifications": notifications,
+#     }
 
 # -------- تجميع المناقلات للرد --------
 def grouped_transfers(user: User, limit: Optional[int] = None) -> Dict[str, List[Transfer]]:
@@ -797,6 +910,7 @@ def compute_user_report(user, target_user_id: int, start_dt=None, end_dt=None) -
         "withdrawn": withdrawn,
         "zakat_out": zakat_out,
     }
+
 
 
 
