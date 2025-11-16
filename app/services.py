@@ -168,6 +168,80 @@ def total_zakat_out_since(user: User, assets: List[Asset], since_dt: datetime) -
             total += money_amount_to_usd(t.quantity, t.asset)
     return DEC6(total)
 
+# -------- دورات الحول المكتملة (عدة سنوات) --------
+def compute_overdue_zakat_cycles(
+    timeline: List[Tuple[datetime, Decimal]],
+    start: datetime,
+    nisab_usd: Decimal,
+) -> List[Dict[str, Any]]:
+    """
+    تحسب جميع الحوالات المكتملة (السنوات) ضمن شريحة زمنية متصلة
+    تبدأ من start وحتى الآن، بشرط أن يبقى الرصيد عند كل تاريخ استحقاق
+    فوق النصاب.
+    """
+    now = now_utc()
+    days_since_start = (now - start).days
+    if days_since_start < ZAKAT_HAUL_DAYS:
+        return []
+
+    max_cycles = days_since_start // ZAKAT_HAUL_DAYS
+    cycles: List[Dict[str, Any]] = []
+    for i in range(1, max_cycles + 1):
+        due_at = start + timezone.timedelta(days=ZAKAT_HAUL_DAYS * i)
+        if due_at > now:
+            break
+
+        # قيمة الرصيد عند تاريخ الاستحقاق
+        val_at_due = value_at_datetime_from_timeline(timeline, due_at)
+
+        # احتياط إضافي: لو كان أقل من النصاب عند هذا التاريخ نوقف (تجديد حول)
+        if val_at_due < nisab_usd:
+            break
+
+        required = DEC6(val_at_due * Decimal(str(ZAKAT_RATE)))
+        cycles.append({
+            "due_at": due_at,
+            "required_usd": required,
+        })
+
+    return cycles
+
+
+def allocate_paid_over_cycles(
+    total_paid_usd: Decimal,
+    cycles: List[Dict[str, Any]],
+) -> Tuple[Decimal, Optional[datetime]]:
+    """
+    توزّع مجموع الزكاة المدفوعة (دولار) على الحوالات بالترتيب (FIFO).
+    ترجع:
+      (total_remaining_usd, earliest_unpaid_due_at)
+    حيث:
+      - total_remaining_usd: مجموع الزكاة المتبقية عن كل السنوات
+      - earliest_unpaid_due_at: تاريخ أقدم حول غير مسدَّد (إن وجد)
+    """
+    remaining_paid = DEC6(total_paid_usd)
+    total_remaining = Decimal("0")
+    earliest_unpaid: Optional[datetime] = None
+
+    for c in cycles:
+        required = c["required_usd"]
+        remaining_for_cycle = required
+
+        if remaining_paid > 0:
+            used = required if remaining_paid >= required else remaining_paid
+            remaining_for_cycle = DEC6(required - used)
+            remaining_paid = DEC6(remaining_paid - used)
+
+        c["remaining_usd"] = remaining_for_cycle
+
+        if remaining_for_cycle > 0 and earliest_unpaid is None:
+            earliest_unpaid = c["due_at"]
+
+        total_remaining = DEC6(total_remaining + remaining_for_cycle)
+
+    return total_remaining, earliest_unpaid
+
+    
 # -------- حساب فئة واحدة (ذهب/فضة/أموال) --------
 def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
     display = get_display_currency(user)
@@ -185,7 +259,7 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
         raise ValueError("Unknown kind")
 
     # عناصر الفئة (صافي كمية كل أصل + قيمته)
-    items = []
+    items: List[Dict[str, Any]] = []
     total_usd = Decimal("0")
     for a in assets:
         add = sum_quantity(user, [a.id], "ADD")
@@ -217,46 +291,100 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
     running_usd, timeline = running_balance_usd_for_class(user, assets)
     haul = haul_window_from_timeline(timeline, nisab_usd)
 
-    # الواجب الزكوي لهذه الدورة (إن اكتمل الحول)
+    # الواجب الزكوي (قد يكون عن سنة واحدة أو عدة سنوات مكتملة)
     zakat_due_usd = Decimal("0")
 
     if haul["above_now"] and haul["completed_hawl"]:
-        due_at = haul["next_due_date"]  # تاريخ الاستحقاق
+        start = haul["haul_started_at"]
 
-        # ⚠️ الواجب يُحسب على قيمة الفئة عند due_at (من خطّ الزمن)
-        base_usd_at_due = value_at_datetime_from_timeline(timeline, due_at)
-        required = DEC6(base_usd_at_due * Decimal(str(ZAKAT_RATE)))
-
-        # احسب المدفوع منذ due_at
-        paid = total_zakat_out_since(user, assets, due_at)
-        remaining = required - paid
-
-        if remaining <= 0:
-            # ✅ دُفعت زكاة الدورة المكتملة (ولو بعد الموعد):
-            # تبدأ دورة جديدة من due_at نفسه، ولا ننقل البداية إلى يوم الدفع.
-            new_start = due_at
-            now = now_utc()
-            # إن مر وقت طويل، حدّد بداية الدورة الجارية الحالية بحيث تبقى المواعيد سنوية ثابتة
-            cycles = max(0, ((now - new_start).days // ZAKAT_HAUL_DAYS))
-            current_cycle_start = new_start + timezone.timedelta(days=cycles * ZAKAT_HAUL_DAYS)
-            next_due = current_cycle_start + timezone.timedelta(days=ZAKAT_HAUL_DAYS)
-            days_left = (next_due - now).days
-
-            haul = {
-                "above_now": running_usd >= nisab_usd,
-                "haul_started_at": current_cycle_start,
-                "completed_hawl": False,
-                "next_due_date": next_due,
-                "days_left": days_left,
-            }
-            zakat_due_usd = Decimal("0")
+        # في الوضع الطبيعي start لن يكون None هنا، لكن نتحوّط
+        if start is not None:
+            # 🟠 1) احسب جميع الحوالات المكتملة من بداية هذه الشريحة
+            cycles = compute_overdue_zakat_cycles(timeline, start, nisab_usd)
         else:
-            # لم يُسدَّد كامل الواجب — أبقِ الاستحقاق الماضي وأظهر المتبقي
-            zakat_due_usd = DEC6(remaining)
-            # days_left سيبقى 0 أو سالباً (إن مرّ الموعد) بحسب haul_window
+            cycles = []
 
+        if cycles:
+            first_due = cycles[0]["due_at"]
+
+            # إجمالي الواجب عن جميع الحوالات المكتملة (سنة، سنتين، ثلاث...)
+            total_required = DEC6(sum(c["required_usd"] for c in cycles))
+
+            # مجموع ما دُفع من الزكاة منذ أول موعد استحقاق
+            # (أي دفعات زائدة تُعتبر مقدّمة للسنوات التالية)
+            total_paid = total_zakat_out_since(user, assets, first_due)
+
+            # وزّع المدفوع على الحوالات بالترتيب (FIFO: الأقدم فالأقدم)
+            total_remaining, earliest_unpaid_due = allocate_paid_over_cycles(total_paid, cycles)
+
+            if total_remaining > 0:
+                # يوجد زكاة متأخرة عن سنة أو أكثر — لا يضيع شيء من حيث القيمة
+                zakat_due_usd = total_remaining
+
+                # نحافظ على شكل حقل haul كما هو، لكن نربطه بأقدم حول غير مسدَّد
+                now = now_utc()
+                next_due = earliest_unpaid_due or first_due
+                days_left = (next_due - now).days  # غالبًا 0 أو سالب إن كان متأخرًا
+
+                haul = {
+                    "above_now": True,
+                    "haul_started_at": start,
+                    "completed_hawl": True,
+                    "next_due_date": next_due,
+                    "days_left": days_left,
+                }
+            else:
+                # ✅ لا يوجد أي متبقٍ عن الحوالات الماضية:
+                #    - إن كان دفع أكثر من اللازم → تُعتبر زكاة مقدّمة
+                #    - يبدأ حول جديد من آخر تاريخ استحقاق
+                zakat_due_usd = Decimal("0")
+
+                last_due = cycles[-1]["due_at"]
+                new_start = last_due
+                now = now_utc()
+                next_due = new_start + timezone.timedelta(days=ZAKAT_HAUL_DAYS)
+                days_left = (next_due - now).days
+
+                haul = {
+                    "above_now": running_usd >= nisab_usd,
+                    "haul_started_at": new_start,
+                    "completed_hawl": False,
+                    "next_due_date": next_due,
+                    "days_left": days_left,
+                }
+        else:
+            # 🔁 fallback: لو لأي سبب لم تُستخرج دورات متعددة، نعود للمنطق السابق (حول واحد)
+            due_at = haul["next_due_date"]  # تاريخ الاستحقاق
+
+            base_usd_at_due = value_at_datetime_from_timeline(timeline, due_at)
+            required = DEC6(base_usd_at_due * Decimal(str(ZAKAT_RATE)))
+
+            paid = total_zakat_out_since(user, assets, due_at)
+            remaining = required - paid
+
+            if remaining <= 0:
+                # ✅ دُفعت زكاة هذه الدورة (ولو بعد الموعد) — يعاد ضبط الحول كما كان سابقاً
+                new_start = due_at
+                now = now_utc()
+                cycles_count = max(0, ((now - new_start).days // ZAKAT_HAUL_DAYS))
+                current_cycle_start = new_start + timezone.timedelta(days=cycles_count * ZAKAT_HAUL_DAYS)
+                next_due = current_cycle_start + timezone.timedelta(days=ZAKAT_HAUL_DAYS)
+                days_left = (next_due - now).days
+
+                haul = {
+                    "above_now": running_usd >= nisab_usd,
+                    "haul_started_at": current_cycle_start,
+                    "completed_hawl": False,
+                    "next_due_date": next_due,
+                    "days_left": days_left,
+                }
+                zakat_due_usd = Decimal("0")
+            else:
+                # لم يُسدَّد كامل الواجب — أبقِ الاستحقاق الماضي وأظهر المتبقي
+                zakat_due_usd = DEC6(remaining)
+                # days_left سيبقى 0 أو سالباً (إن مرّ الموعد) بحسب haul_window
     else:
-        # لم يكتمل الحول أو لا يزال تحت النصاب
+        # لم يكتمل الحول أو لا يزال تحت النصاب — لا زكاة واجبة الآن
         zakat_due_usd = Decimal("0")
 
     return {
@@ -277,6 +405,7 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
             "zakat_due_display": str(usd_to_display(zakat_due_usd, display)),
         }
     }
+
 
 # -------- إشعارات قبل الموعد فقط --------
 def build_notifications_for_class(class_snapshot: Dict[str, Any]) -> List[str]:
@@ -668,6 +797,7 @@ def compute_user_report(user, target_user_id: int, start_dt=None, end_dt=None) -
         "withdrawn": withdrawn,
         "zakat_out": zakat_out,
     }
+
 
 
 
