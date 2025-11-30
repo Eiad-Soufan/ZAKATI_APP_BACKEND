@@ -19,6 +19,298 @@ ZAKAT_REMINDER_OFFSETS = [30, 15, 7, 0]
 
 # conf.py
 
+ZAKAT_REFERENCE_JSON = {
+  "title": "مرجعية الزكاة (فقهًا وتطبيقًا)",
+  "lang": "ar",
+  "version": "1.0.0",
+  "sections": [
+    {
+      "id": "intro",
+      "title": "مقدمة وتعريف",
+      "body": "الزكاة ركن من أركان الإسلام الخمسة، وهي حق واجب في المال إذا بلغ النصاب وحال عليه الحول، وتُصرف لمستحقيها الثمانية المذكورين في القرآن. تختلف عن الصدقة النافلة إذ للزكاة شروط ومقادير محددة.",
+      "bullets": None,
+      "groups": None,
+      "references": None,
+      "note": None,
+      "disclaimer": None
+    },
+    {
+      "id": "dalil",
+      "title": "الأدلة الشرعية المختصرة",
+      "body": None,
+      "bullets": None,
+      "groups": [
+        {
+          "title": "القرآن الكريم",
+          "body": None,
+          "bullets": None,
+          "verses": [
+            { "ref": "البقرة: 43، 110", "text": "وأقيموا الصلاة وآتوا الزكاة" },
+            { "ref": "التوبة: 103", "text": "خذ من أموالهم صدقة تطهرهم وتزكيهم بها" },
+            { "ref": "التوبة: 60", "text": "إنما الصدقات للفقراء ... (مصارف الزكاة الثمانية)" }
+          ],
+          "hadiths": None,
+          "notes": None
+        },
+        {
+          "title": "السنة الصحيحة",
+          "body": None,
+          "bullets": None,
+          "verses": None,
+          "hadiths": [
+            { "ref": "متفق عليه", "text": "بني الإسلام على خمس ... وإيتاء الزكاة", "source": None },
+            { "ref": "البخاري، مسلم", "text": "ليس فيما دون خمس أواقٍ صدقة (200 درهم ≈ 595غ فضة)", "source": None },
+            { "ref": "البخاري", "text": "وفي الرِّقَةِ ربع العشر (2.5%)", "source": None }
+          ],
+          "notes": "نصاب الذهب مقدّر بـ 20 مثقالًا ≈ 85 غرامًا خالصًا، وهو الجاري في المذاهب الأربعة."
+        }
+      ],
+      "references": None,
+      "note": None,
+      "disclaimer": None
+    },
+    {
+      "id": "zakatable_supported",
+      "title": "الأموال الزكوية التي يدعمها التطبيق",
+      "body": None,
+      "bullets": [
+        "الذهب: جميع العيارات ويُقوَّم بالسعر الجاري للغرام.",
+        "الفضة.",
+        "النقود والعملات (USD, MYR, وغيرها)."
+      ],
+      "groups": None,
+      "references": None,
+      "note": "السلع التجارية/الأسهم/الديون يمكن دعمها لاحقًا بنفس منطق الحول والنصاب.",
+      "disclaimer": None
+    },
+    {
+      "id": "conditions",
+      "title": "شروط الوجوب",
+      "body": None,
+      "bullets": [
+        "الملك التام (مال مملوك غير معلَّق).",
+        "بلوغ النصاب: الذهب 85غ 24K، الفضة 595غ تقريبًا، النقود تُقاس على أحدهما (المعمول به غالبًا الذهب).",
+        "الحول القمري: مرور سنة هجرية (~354 يومًا) والمال فوق النصاب طوالها؛ إن نزل قبل الإتمام انقطع الحول."
+      ],
+      "groups": None,
+      "references": None,
+      "note": None,
+      "disclaimer": None
+    },
+    {
+      "id": "rate",
+      "title": "مقدار الزكاة",
+      "body": "ربع العشر (2.5%) من صافي المال الزكوي عند تمام الحول، للذهب/الفضة/النقود.",
+      "bullets": None,
+      "groups": None,
+      "references": None,
+      "note": None,
+      "disclaimer": None
+    },
+    {
+      "id": "how_app_calculates",
+      "title": "منهج الحساب في التطبيق (بدقة فقهية)",
+      "body": None,
+      "bullets": None,
+      "groups": [
+        {
+          "title": "الحول والنصاب (لكل فئة على حدة)",
+          "body": None,
+          "bullets": [
+            "يبدأ الحول عند أول لحظة يبلغ فيها مجموع الفئة النصاب.",
+            "إذا هبطت القيمة تحت النصاب قبل إكمال الحول: يُلغى الحول ويُستأنف عند بلوغه مجددًا.",
+            "عند اكتمال الحول تُثبَت الزكاة الواجبة."
+          ],
+          "verses": None,
+          "hadiths": None,
+          "notes": None
+        },
+        {
+          "title": "قيمة الوعاء عند الاستحقاق",
+          "body": "يحتسب التطبيق قيمة الفئة بالدولار عند لحظة الاستحقاق (due_at) اعتمادًا على خط الزمن المستخلص من المناقلات، ثم يطبق 2.5%.",
+          "bullets": None,
+          "verses": None,
+          "hadiths": None,
+          "notes": None
+        },
+        {
+          "title": "السداد بعد الحول",
+          "body": None,
+          "bullets": [
+            "يجمع التطبيق ما دُفع من زكاة (ZAKAT_OUT) منذ due_at.",
+            "إذا غطّى المدفوع كامل الواجب: تُقفل الدورة ويبدأ حول جديد من تاريخ الاستحقاق نفسه (لا من يوم الدفع).",
+            "إذا كان السداد جزئيًا: يُظهر المتبقّي حتى يُستوفى."
+          ],
+          "verses": None,
+          "hadiths": None,
+          "notes": None
+        },
+        {
+          "title": "الهبوط تحت النصاب بعد الاستحقاق",
+          "body": "لا يُسقط الواجب؛ يبقى المتبقّي في الذمة حتى يُدفع.",
+          "bullets": None,
+          "verses": None,
+          "hadiths": None,
+          "notes": None
+        },
+        {
+          "title": "عملة العرض",
+          "body": "تُسعّر القيم بالدولار أولًا ثم تُحَوَّل إلى عملة العرض عبر القسمة على unit_price_usd للعملة المختارة من جدول الأصول.",
+          "bullets": None,
+          "verses": None,
+          "hadiths": None,
+          "notes": None
+        }
+      ],
+      "references": None,
+      "note": None,
+      "disclaimer": None
+    },
+    {
+      "id": "scenarios",
+      "title": "سيناريوهات مغطّاة",
+      "body": None,
+      "bullets": [
+        "بلغ النصاب اليوم ⇒ يبدأ الحول اليوم، ولا زكاة قبل مرور 354 يومًا.",
+        "هبط تحت النصاب قبل الإتمام ⇒ يُلغى الحول ويُستأنف لاحقًا عند بلوغه مجددًا.",
+        "اكتمل الحول والمال فوق النصاب ⇒ تظهر الزكاة الواجبة (2.5% من قيمة الفئة عند due_at).",
+        "تأخر السداد ⇒ يبقى المتبقّي واجبًا حتى يُدفع.",
+        "سُدِّدت كامل الزكاة بعد الاستحقاق ⇒ يبدأ حول جديد من تاريخ الاستحقاق نفسه.",
+        "سُدِّد جزء فقط ⇒ يظهر المتبقّي ولا تبدأ دورة جديدة حتى الاكتمال.",
+        "إن لم تُحدَّد عملة عرض: العرض بالدولار."
+      ],
+      "groups": None,
+      "references": None,
+      "note": None,
+      "disclaimer": None
+    },
+    {
+      "id": "references",
+      "title": "مراجع موثوقة ",
+      "body": None,
+      "bullets": None,
+      "groups": None,
+      "references": [
+        {
+          "type": "Quran",
+          "name": "البقرة: 43، 110",
+          "author": None,
+          "source": None,
+          "note": "إقامة الصلاة وإيتاء الزكاة"
+        },
+        {
+          "type": "Quran",
+          "name": "التوبة: 60",
+          "author": None,
+          "source": None,
+          "note": "مصارف الزكاة الثمانية"
+        },
+        {
+          "type": "Quran",
+          "name": "التوبة: 103",
+          "author": None,
+          "source": None,
+          "note": "أخذ الصدقة لتطهير المال"
+        },
+        {
+          "type": "Hadith",
+          "name": "حديث الأركان",
+          "author": None,
+          "source": "متفق عليه",
+          "note": "وجوب الزكاة"
+        },
+        {
+          "type": "Hadith",
+          "name": "خمس أواقٍ (200 درهم ≈ 595غ)",
+          "author": None,
+          "source": "البخاري، مسلم",
+          "note": None
+        },
+        {
+          "type": "Hadith",
+          "name": "ربع العشر (2.5%)",
+          "author": None,
+          "source": "البخاري",
+          "note": None
+        },
+        {
+          "type": "Madhahib",
+          "name": "المجموع شرح المهذب",
+          "author": "النووي (شافعي)",
+          "source": None,
+          "note": None
+        },
+        {
+          "type": "Madhahib",
+          "name": "المغني",
+          "author": "ابن قدامة (حنبلي)",
+          "source": None,
+          "note": None
+        },
+        {
+          "type": "Madhahib",
+          "name": "بدائع الصنائع",
+          "author": "الكاساني (حنفي)",
+          "source": None,
+          "note": None
+        },
+        {
+          "type": "Madhahib",
+          "name": "رد المحتار",
+          "author": "ابن عابدين (حنفي)",
+          "source": None,
+          "note": None
+        },
+        {
+          "type": "Madhahib",
+          "name": "المدونة/الذخيرة",
+          "author": "القرافي وآخرون (مالكي)",
+          "source": None,
+          "note": None
+        },
+        {
+          "type": "Comparative",
+          "name": "بداية المجتهد ونهاية المقتصد",
+          "author": "ابن رشد",
+          "source": None,
+          "note": None
+        },
+        {
+          "type": "FiqhBodies",
+          "name": "مجمع الفقه الإسلامي الدولي (OIC)",
+          "author": None,
+          "source": None,
+          "note": "قرارات الزكاة"
+        },
+        {
+          "type": "FiqhBodies",
+          "name": "هيئة كبار العلماء (السعودية)",
+          "author": None,
+          "source": None,
+          "note": "فتاوى معتمدة"
+        },
+        {
+          "type": "Standards",
+          "name": "AAOIFI – معيار الزكاة",
+          "author": None,
+          "source": None,
+          "note": "المعايير الشرعية للمؤسسات المالية الإسلامية"
+        },
+        {
+          "type": "ZakatInstitutions",
+          "name": "بيت الزكاة (الكويت) ولجان رسمية",
+          "author": None,
+          "source": None,
+          "note": "أدلة إجرائية"
+        }
+      ],
+      "note": None,
+      "disclaimer": "اقتصرنا على القرآن والسنة الصحيحة وما عليه المذاهب الأربعة وجهات معيارية معتبرة، وتجنّبنا المرويات الضعيفة والمراجع المختلف عليها."
+    }
+  ]
+}
+
+
 PRIVACY_POLICY_JSON = {
     "title": "سياسة الخصوصية لتطبيق الزكاة",
     "lang": "ar",
@@ -584,5 +876,6 @@ CONTACT_INFO_JSON = {
         }
     ]
 }
+
 
 
