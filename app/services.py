@@ -25,8 +25,7 @@ import requests
 METAL_API_URL = "https://api.metalpriceapi.com/v1/latest"
 OUNCE_TROY_TO_GRAM = Decimal("31.1034768")
 ERAPI_URL = "https://open.er-api.com/v6/latest/USD"
-################################################
-TRANSFER_DATE_FIELD = "transfer_date"  # ← عدّلها إن كان الحقل اسمه 'occurred_at' مثلاً
+TRANSFER_DATE_FIELD = "transfer_date"  
 
 # -------- أدوات رقمية --------
 DEC6 = lambda x: (x if isinstance(x, Decimal) else Decimal(str(x))).quantize(Decimal("0.000001"))
@@ -299,7 +298,7 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
 
         # في الوضع الطبيعي start لن يكون None هنا، لكن نتحوّط
         if start is not None:
-            # 🟠 1) احسب جميع الحوالات المكتملة من بداية هذه الشريحة
+            #  1) احسب جميع الحوالات المكتملة من بداية هذه الشريحة
             cycles = compute_overdue_zakat_cycles(timeline, start, nisab_usd)
         else:
             cycles = []
@@ -334,7 +333,7 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
                     "days_left": days_left,
                 }
             else:
-                # ✅ لا يوجد أي متبقٍ عن الحوالات الماضية:
+                #  لا يوجد أي متبقٍ عن الحوالات الماضية:
                 #    - إن كان دفع أكثر من اللازم → تُعتبر زكاة مقدّمة
                 #    - يبدأ حول جديد من آخر تاريخ استحقاق
                 zakat_due_usd = Decimal("0")
@@ -353,7 +352,7 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
                     "days_left": days_left,
                 }
         else:
-            # 🔁 fallback: لو لأي سبب لم تُستخرج دورات متعددة، نعود للمنطق السابق (حول واحد)
+            #  fallback: لو لأي سبب لم تُستخرج دورات متعددة، نعود للمنطق السابق (حول واحد)
             due_at = haul["next_due_date"]  # تاريخ الاستحقاق
 
             base_usd_at_due = value_at_datetime_from_timeline(timeline, due_at)
@@ -363,7 +362,7 @@ def compute_class_snapshot(user: User, kind: str) -> Dict[str, Any]:
             remaining = required - paid
 
             if remaining <= 0:
-                # ✅ دُفعت زكاة هذه الدورة (ولو بعد الموعد) — يعاد ضبط الحول كما كان سابقاً
+                #  دُفعت زكاة هذه الدورة (ولو بعد الموعد) — يعاد ضبط الحول كما كان سابقاً
                 new_start = due_at
                 now = now_utc()
                 cycles_count = max(0, ((now - new_start).days // ZAKAT_HAUL_DAYS))
@@ -590,8 +589,6 @@ def grouped_transfers(user: User, limit: Optional[int] = None) -> Dict[str, List
 ######################################################
 ######################################################
 # Update Currencies and Metals
-
-
 def update_currency_assets_from_erapi() -> dict:
     from .models import Asset
 
@@ -660,8 +657,6 @@ def update_currency_assets_from_erapi() -> dict:
         "time_next_update_utc": payload.get("time_next_update_utc"),
         "base_code": payload.get("base_code"),
     }
-
-
 
 
 def _quantize_to_field(value: Decimal, model_cls, field_name: str) -> Decimal:
@@ -760,10 +755,6 @@ def update_metals_assets_from_metalpriceapi(api_key: str) -> dict:
         "base": payload.get("base"),
     }
 
-
-
-
-# services.py 
 
 def _q(val: Decimal, places=6) -> Decimal:
     q = Decimal("1").scaleb(-places)  # 6 -> 0.000001
@@ -910,6 +901,7 @@ def compute_user_report(user, target_user_id: int, start_dt=None, end_dt=None) -
         "withdrawn": withdrawn,
         "zakat_out": zakat_out,
     }
+
 
 
 
